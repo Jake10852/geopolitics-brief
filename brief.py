@@ -84,6 +84,14 @@ def mode_for(d):
 
 def post_json(url, payload, headers, timeout=600):
     data = json.dumps(payload).encode("utf-8")
+
+    # Resend sits behind Cloudflare, which rejects urllib's default
+    # "Python-urllib/3.x" User-Agent with a 403 and body "error code: 1010".
+    # Any ordinary-looking UA gets through. Harmless for the Anthropic call.
+    headers = dict(headers)
+    headers.setdefault("User-Agent", "daily-brief/1.0")
+    headers.setdefault("Accept", "application/json")
+
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
