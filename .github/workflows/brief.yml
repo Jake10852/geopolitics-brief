@@ -1,0 +1,43 @@
+name: Daily Geopolitics Brief
+
+on:
+  schedule:
+    # 06:00 UTC, Monday to Friday.
+    # GitHub cron is ALWAYS UTC and does not follow British Summer Time.
+    # 06:00 UTC = 07:00 BST (late Mar - late Oct) and 06:00 GMT in winter.
+    # If you want a fixed 07:00 local year-round, change this to "0 7 * * 1-5"
+    # in winter and back to "0 6 * * 1-5" in summer, or just accept the shift.
+    - cron: "0 6 * * 1-5"
+  # Lets you trigger a test run by hand from the Actions tab.
+  workflow_dispatch:
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate and send brief
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+        run: python brief.py
+
+      - name: Save a copy of the rendered brief
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brief-html
+          path: brief-output.html
+          if-no-files-found: ignore
+          retention-days: 14
