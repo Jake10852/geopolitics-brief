@@ -137,6 +137,23 @@ Write in British English throughout. Measured, analytical, no hype, no
 throat-clearing. Assume an intelligent reader who follows the news but is not
 a specialist.
 
+GLOSS THE UNFAMILIAR — APPLIES TO ALL THREE SECTIONS
+The reader does not carry world geography or military vocabulary in his head,
+and would rather be told than guess. The first time you name something he may
+not place, gloss it in brackets in a few words and move on:
+  - cities and regions, with the country: Baghdad (Iraq), Tehran (Iran),
+    Kryvyi Rih (central Ukraine)
+  - weapons and military jargon: Scud missiles (Soviet-designed ballistic
+    missiles), MANPADS (shoulder-fired anti-aircraft launchers)
+  - organisations and acronyms on first use: the RSF (Rapid Support Forces, a
+    Sudanese paramilitary group)
+  - treaties, doctrines, historical figures and institutions: the Althing
+    (Iceland's parliament), the Porte (the Ottoman government)
+Gloss generously rather than sparingly — if you find yourself wondering
+whether he'd know it, he would rather you told him. Keep each gloss to a few
+words inside brackets so the prose still flows. Do not add a glossary at the
+end, and do not gloss the obvious (Paris, NATO, the Second World War).
+
 ============================================================
 SECTION 1 — GEOPOLITICS
 ============================================================
@@ -160,9 +177,19 @@ nineteenth century, interwar, Cold War, post-1990 are all fair game. State
 plainly where the analogy breaks down as well as where it holds. Avoid lazy
 parallels; not every crisis is Munich 1938 or Sarajevo 1914.
 
+WHY IT MATTERS — WRITE THIS PART DIFFERENTLY
+This is the one part of the brief that should be genuinely simple. Drop the
+analytical register entirely and explain it the way you would to a friend in
+the pub who has not been following the story: short sentences, plain words, no
+jargon, no hedging clauses, nothing that needs re-reading. If a sentence has a
+subordinate clause, break it in two. Say what is actually going on and why
+anyone should care. Two short paragraphs, around 40 words each, and no more.
+The three things to watch should be one plain sentence each.
+
 LENGTH
-Roughly 200 words on today's story, 200 on the historical echo, 100 on why it
-matters. Flowing paragraphs, not bullet fragments.
+Roughly 200 words on today's story, 200 on the historical echo, and about 80
+plain-English words on why it matters. Flowing paragraphs in the first two
+parts, not bullet fragments.
 
 ============================================================
 SECTION 2 — SPANISH PRACTICE
@@ -229,6 +256,8 @@ Return ONLY an HTML fragment — no markdown, no code fences, no preamble, no
   <span class="region">REGION LABEL</span>
 </div>
 
+<div class="divider first"><span>Geopolitics</span></div>
+
 <section>
   <h2>Today's Story</h2>
   <h3>HEADLINE</h3>
@@ -247,8 +276,8 @@ Return ONLY an HTML fragment — no markdown, no code fences, no preamble, no
 <section>
   <h2>Why It Matters</h2>
   <div class="takeaway">
-    <p>The pattern that repeats.</p>
-    <p>What is different this time.</p>
+    <p>Plain-English paragraph: what is really going on here.</p>
+    <p>Plain-English paragraph: why it should matter to anyone.</p>
   </div>
   <p style="margin-top:16px"><strong>Three things to watch:</strong></p>
   <ul class="watch"><li>First.</li><li>Second.</li><li>Third.</li></ul>
