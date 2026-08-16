@@ -59,7 +59,7 @@
 
   /* --- Section divider, used between the three parts of the brief --- */
   .divider {
-    margin: 44px 0 0;
+    margin: 46px 0 0;
     border-top: 3px double #1a1a1a;
     text-align: center;
     line-height: 0;
@@ -67,17 +67,23 @@
   .divider span {
     display: inline-block;
     position: relative;
-    top: -9px;
+    top: -17px;
     background: #fbfaf7;
-    padding: 0 14px;
-    font-family: Helvetica, Arial, sans-serif;
-    font-size: 11px;
-    letter-spacing: .22em;
-    text-transform: uppercase;
+    padding: 0 18px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 27px;
+    letter-spacing: .01em;
     font-weight: bold;
     color: #8a3324;
-    line-height: 18px;
+    line-height: 34px;
   }
+  /* The first divider sits just under the masthead rule, so it drops the
+     border and simply acts as a large section title. */
+  .divider.first {
+    border-top: none;
+    margin-top: 30px;
+  }
+  .divider.first span { top: 0; }
 
   /* --- Spanish section --- */
   .phrase {
