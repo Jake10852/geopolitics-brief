@@ -35,8 +35,12 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 RESEND_URL = "https://api.resend.com/emails"
 MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
 
-# Bumped from 4000: three sections in one response need the headroom.
-MAX_TOKENS = 8000
+# Three sections in one response need real headroom. At 8000 the brief was
+# silently losing its General Knowledge section: the geopolitics half ran long
+# once bracketed glosses were added, the response hit the ceiling mid-sentence,
+# and the tidy-up below trimmed back to the last complete </section>. Keep this
+# generous — an unused ceiling costs nothing.
+MAX_TOKENS = 16000
 
 # --------------------------------------------------------------------------
 # Rotations
@@ -186,10 +190,19 @@ subordinate clause, break it in two. Say what is actually going on and why
 anyone should care. Two short paragraphs, around 40 words each, and no more.
 The three things to watch should be one plain sentence each.
 
-LENGTH
-Roughly 200 words on today's story, 200 on the historical echo, and about 80
-plain-English words on why it matters. Flowing paragraphs in the first two
-parts, not bullet fragments.
+LENGTH — TREAT THESE AS CEILINGS, NOT TARGETS
+About 200 words on today's story, 200 on the historical echo, and about 80
+plain-English words on why it matters. Do not exceed 250 words on either of
+the first two: going long here has repeatedly squeezed out the later sections
+of the brief. Three tight paragraphs beat five loose ones, and the glosses
+should stay inside the word count rather than expand it. Flowing paragraphs in
+the first two parts, not bullet fragments.
+
+BUDGET THE WHOLE BRIEF
+All three sections must fit in one reply. The Spanish and General Knowledge
+sections matter just as much as the geopolitics, so do not spend your length
+on the first section and rush the rest. If you are running long, cut the
+geopolitics prose — never drop a Spanish phrase or a quiz fact.
 
 ============================================================
 SECTION 2 — SPANISH PRACTICE
@@ -388,6 +401,31 @@ def generate(today):
     end = fragment.rfind("</section>")
     if end != -1:
         fragment = fragment[: end + len("</section>")]
+
+    # That trim is what makes a truncated reply look deceptively tidy: it cuts
+    # back to the last complete section, so a brief missing its final third
+    # still arrives looking finished. Check the sections we expect are actually
+    # present and say so in the email itself if they are not.
+    missing = [
+        name
+        for name, marker in (
+            ("Spanish Practice", "<span>Spanish Practice</span>"),
+            ("General Knowledge", "<span>General Knowledge</span>"),
+        )
+        if marker not in fragment
+    ]
+    if missing:
+        print(
+            f"WARNING: brief is missing section(s): {', '.join(missing)}",
+            file=sys.stderr,
+        )
+        fragment += (
+            '\n<section><h2>Incomplete Brief</h2><div class="takeaway"><p>'
+            "This morning's brief is missing the following section(s): "
+            f"{', '.join(missing)}. The model's reply was cut short before it "
+            "finished writing them. Nothing has been silently dropped from the "
+            "sections above.</p></div></section>"
+        )
 
     return fragment
 
