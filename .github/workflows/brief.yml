@@ -1,20 +1,35 @@
-name: Daily Geopolitics Brief
+name: Daily Brief
 
 on:
   schedule:
-    # 06:00 UTC, Monday to Friday.
+    # 06:00 UTC, every day including weekends.
     # GitHub cron is ALWAYS UTC and does not follow British Summer Time.
     # 06:00 UTC = 07:00 BST (late Mar - late Oct) and 06:00 GMT in winter.
-    # If you want a fixed 07:00 local year-round, change this to "0 7 * * 1-5"
-    # in winter and back to "0 6 * * 1-5" in summer, or just accept the shift.
-    - cron: "0 6 * * 1-5"
+    # GitHub also queues scheduled runs under load, so delivery usually lands
+    # somewhere between 07:00 and 08:30 BST rather than exactly on the hour.
+    - cron: "0 6 * * *"
   # Lets you trigger a test run by hand from the Actions tab.
   workflow_dispatch:
+    inputs:
+      force_date:
+        description: "Override the date (YYYY-MM-DD) to preview another day's rotation. Leave blank for today."
+        required: false
+        default: ""
+      dry_run:
+        description: "Build the brief but do not send the email."
+        type: boolean
+        required: false
+        default: false
+
+# If a manual run overlaps the scheduled one, don't send two emails.
+concurrency:
+  group: daily-brief
+  cancel-in-progress: false
 
 jobs:
   brief:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Check out repository
@@ -31,6 +46,8 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          FORCE_DATE: ${{ github.event.inputs.force_date }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
         run: python brief.py
 
       - name: Save a copy of the rendered brief
