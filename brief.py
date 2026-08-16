@@ -348,6 +348,18 @@ def generate(today):
         fragment = fragment.split("\n", 1)[1] if "\n" in fragment else fragment
         fragment = fragment.rsplit("```", 1)[0].strip()
 
+    # With web search enabled the reply arrives as several text blocks, and the
+    # ones between tool calls are the model talking to itself ("Now I'll verify
+    # the Spanish phrases..."). Joining them all put that commentary at the top
+    # of the email. Keep only the HTML fragment: everything from the opening
+    # dateline div to the final closing section tag.
+    start = fragment.find('<div class="dateline"')
+    if start > 0:
+        fragment = fragment[start:]
+    end = fragment.rfind("</section>")
+    if end != -1:
+        fragment = fragment[: end + len("</section>")]
+
     return fragment
 
 
