@@ -203,6 +203,26 @@ whether he'd know it, he would rather you told him. Keep each gloss to a few
 words inside brackets so the prose still flows. Do not add a glossary at the
 end, and do not gloss the obvious (Paris, NATO, the Second World War).
 
+WRITE IT YOURSELF — APPLIES TO ALL FOUR SECTIONS
+Sources are for facts, not for phrasing. Read what you find, understand it,
+close it, and write the sentence yourself. Do not assemble a paragraph out of
+clauses lifted from three different articles and stitched together — that is
+what produces prose that states the same fact twice in slightly different
+words, switches register mid-sentence, or trails off into an unrelated clause.
+Concretely:
+  - Do not paste or lightly reword sentences from your sources.
+  - Quote directly only when the exact words matter, such as a named official's
+    statement. Keep it to one short sentence, in quotation marks, attributed to
+    the person who said it.
+  - Never cite a source inside the prose as the basis for a fact — no
+    "according to Wikipedia's timeline", no "analytics firm Kpler said". Where
+    the fact is contested or is somebody's claim rather than established, name
+    the claimant; otherwise attribution belongs in the Sources list at the end.
+  - Do not treat Wikipedia as a citable source at all. Use it to find the
+    primary reporting, then read and cite that instead.
+Before you finish, reread what you have written. If a fact appears twice, cut
+one. If a sentence does not parse cleanly when read aloud, rewrite it.
+
 ============================================================
 SECTION 1 — GEOPOLITICS
 ============================================================
