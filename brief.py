@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Daily brief — one combined email with three sections, every day.
+Daily brief — one combined email with four sections, every day.
 
 Sections:
   1. Geopolitics   — today's story, a historical echo, why it matters
   2. Spanish       — advanced phrases, Peninsular and Colombian
   3. General Knowledge — pub-quiz-grade facts with context
+  4. The Long Game — a Psycho-Cybernetics-anchored idea and a practice
 
 Replaces the earlier geo/Spanish alternation. Runs seven days a week, so the
 rotations below are keyed on the date's ordinal rather than a weekday count.
@@ -74,6 +75,48 @@ SPANISH_THEMES = [
     "winding down a conversation — leaving politely, promising to be in touch",
 ]
 
+# Rotates the strand of Section 4. Anchored in Maxwell Maltz's
+# Psycho-Cybernetics (1960), widened with adjacent capability topics so it
+# doesn't become sixteen paraphrases of the same chapter.
+LONG_GAME_STRANDS = [
+    "Psycho-Cybernetics: the self-image as the governing mechanism — why "
+    "performance tends to snap back to how you privately see yourself",
+    "Skill acquisition: deliberate practice — working at the edge of your "
+    "competence with immediate feedback, rather than repeating what you can "
+    "already do comfortably",
+    "Psycho-Cybernetics: the Theatre of the Mind — vivid mental rehearsal "
+    "treated as genuine practice, and how Maltz says to run a session",
+    "Composure: stress inoculation — rehearsing the conditions rather than "
+    "the outcome, so that pressure feels familiar when it arrives",
+    "Psycho-Cybernetics: the servo-mechanism — setting a clear target and "
+    "letting the automatic guidance system correct course, instead of "
+    "consciously steering every step",
+    "Attention: protecting a deep block — treating uninterrupted focus as the "
+    "genuinely scarce resource and defending it structurally",
+    "Psycho-Cybernetics: synthetic experience — the nervous system's poor "
+    "discrimination between a vividly imagined event and a real one, and what "
+    "that licenses you to practise",
+    "Physical discipline: consistency over intensity — the training principle "
+    "that the session you will actually repeat beats the one that impresses",
+    "Psycho-Cybernetics: rational thinking about the self — auditing a belief "
+    "about yourself against evidence, rather than arguing with the feeling",
+    "Preparation: systems over motivation — arranging the environment so the "
+    "action you want is the default rather than a decision",
+    "Psycho-Cybernetics: the relaxed mechanism — why excessive effort degrades "
+    "performance, and Maltz's deliberate practice of doing nothing",
+    "Skill acquisition: plateaus and consolidation — why progress is stepwise, "
+    "and what is actually happening during the flat stretches",
+    "Psycho-Cybernetics: the failure mechanism — reading frustration, "
+    "aggressiveness, insecurity, loneliness, uncertainty, resentment and "
+    "emptiness as signals to adjust course rather than verdicts on you",
+    "Presence: bearing, pace and voice — how posture and tempo change both how "
+    "you are read by others and how you feel from the inside",
+    "Psycho-Cybernetics: emotional scar tissue — how a defence built for an "
+    "old situation quietly constrains the current one",
+    "Recovery: sleep and genuine downtime as inputs to performance rather than "
+    "what is left over once the work is done",
+]
+
 KNOWLEDGE_CATEGORIES = [
     "science and the natural world",
     "history before 1500",
@@ -93,7 +136,7 @@ KNOWLEDGE_CATEGORIES = [
 
 
 def rotations(d):
-    """Pick today's region, Spanish theme, and three knowledge categories."""
+    """Region, Spanish theme, three knowledge categories, Long Game strand."""
     n = d.toordinal()
     region = REGIONS[n % len(REGIONS)]
     theme = SPANISH_THEMES[n % len(SPANISH_THEMES)]
@@ -101,7 +144,8 @@ def rotations(d):
         KNOWLEDGE_CATEGORIES[(n * 3 + i) % len(KNOWLEDGE_CATEGORIES)]
         for i in range(3)
     ]
-    return region, theme, cats
+    strand = LONG_GAME_STRANDS[n % len(LONG_GAME_STRANDS)]
+    return region, theme, cats, strand
 
 
 def post_json(url, payload, headers, timeout=900):
@@ -130,12 +174,13 @@ def post_json(url, payload, headers, timeout=900):
 # --------------------------------------------------------------------------
 
 def build_prompt(today):
-    region, theme, cats = rotations(today)
+    region, theme, cats, strand = rotations(today)
     date_str = today.strftime("%A, %-d %B %Y")
     cat_list = "; ".join(cats)
 
-    return f"""Today is {date_str}. Produce a combined daily brief with three
-sections: geopolitics, Spanish practice, and general knowledge.
+    return f"""Today is {date_str}. Produce a combined daily brief with four
+sections: geopolitics, Spanish practice, general knowledge, and a short
+self-development section called The Long Game.
 
 Write in British English throughout. Measured, analytical, no hype, no
 throat-clearing. Assume an intelligent reader who follows the news but is not
@@ -199,10 +244,11 @@ should stay inside the word count rather than expand it. Flowing paragraphs in
 the first two parts, not bullet fragments.
 
 BUDGET THE WHOLE BRIEF
-All three sections must fit in one reply. The Spanish and General Knowledge
-sections matter just as much as the geopolitics, so do not spend your length
+All four sections must fit in one reply. Spanish, General Knowledge and The
+Long Game matter just as much as the geopolitics, so do not spend your length
 on the first section and rush the rest. If you are running long, cut the
-geopolitics prose — never drop a Spanish phrase or a quiz fact.
+geopolitics prose — never drop a Spanish phrase, a quiz fact, or the practice
+at the end.
 
 ============================================================
 SECTION 2 — SPANISH PRACTICE
@@ -256,6 +302,48 @@ anything that smells like internet trivia. Use web search to verify anything
 you are not certain of, and discard rather than hedge. Specifically avoid the
 well-known false or disputed chestnuts — the Great Wall being visible from
 space, Romans being paid in salt, Einstein failing maths, and their kin.
+
+============================================================
+SECTION 4 — THE LONG GAME
+============================================================
+
+A short daily section on building capability over time. The reader is a
+capable adult who wants to get better at things and is interested in
+Psycho-Cybernetics (Maxwell Maltz, 1960) as a starting point, but does not
+want to be sold to.
+
+TODAY'S STRAND
+{strand}
+
+WHAT TO PRODUCE
+Two parts, no more:
+  - The Idea: about 110 words explaining today's strand in plain English. If
+    it comes from Psycho-Cybernetics, say so and represent Maltz accurately —
+    the self-image mechanism, the servo-mechanism, the Theatre of the Mind and
+    so on are his actual concepts, so use them as he meant them. Do not invent
+    quotations, and do not attribute modern neuroscience claims to a 1960
+    book. Where a claim is contested or has aged badly, say so in a clause
+    rather than laundering it.
+  - The Practice: about 70 words giving one specific thing to do today.
+    Concrete and bounded — a named exercise, a duration, a time of day, or a
+    single question to sit with. Something that can actually be done between
+    other commitments, not a lifestyle overhaul.
+
+TONE AND LIMITS — READ THIS CAREFULLY
+Write it like a sane coach, not a motivational account. Specifically:
+  - No hustle or grind framing, no "most people won't do this", no implication
+    that rest is weakness.
+  - Maltz's own position is that self-criticism and self-punishment are the
+    problem, not the cure. Keep to that. Nothing that encourages harsh
+    self-talk, shame as motivation, or measuring worth by output.
+  - No prescriptions about diet, calorie restriction, fasting, extreme
+    training loads, or sleep deprivation. Physical strands stay at the level
+    of general principle.
+  - No superhero cosplay. The reader mentioned Batman as shorthand for
+    building capability; do not run with the bit, and never mention Batman or
+    Bruce Wayne.
+  - It is a daily email. Assume today is an ordinary Tuesday, not a turning
+    point.
 
 ============================================================
 OUTPUT FORMAT
@@ -344,6 +432,22 @@ Return ONLY an HTML fragment — no markdown, no code fences, no preamble, no
   (repeat the fact div for each of the six entries)
 </section>
 
+<div class="divider"><span>The Long Game</span></div>
+
+<section>
+  <h2>Today's Idea</h2>
+  <h3>A SHORT TITLE FOR THE IDEA<span class="era">SOURCE OR FIELD</span></h3>
+  <p class="lead">First paragraph.</p>
+  <p>Second paragraph if needed.</p>
+</section>
+
+<section>
+  <h2>The Practice</h2>
+  <div class="practice">
+    <p>The specific thing to do today.</p>
+  </div>
+</section>
+
 If research fails or sources are too thin for the geopolitics section, say so
 honestly in the same format rather than padding it with speculation."""
 
@@ -411,6 +515,7 @@ def generate(today):
         for name, marker in (
             ("Spanish Practice", "<span>Spanish Practice</span>"),
             ("General Knowledge", "<span>General Knowledge</span>"),
+            ("The Long Game", "<span>The Long Game</span>"),
         )
         if marker not in fragment
     ]
@@ -472,11 +577,12 @@ def main():
         datetime.date.fromisoformat(forced) if forced else datetime.date.today()
     )
 
-    region, theme, cats = rotations(today)
+    region, theme, cats, strand = rotations(today)
     print(f"{today} — combined brief using {MODEL}")
     print(f"  region:     {region}")
     print(f"  Spanish:    {theme}")
     print(f"  knowledge:  {'; '.join(cats)}")
+    print(f"  long game:  {strand}")
 
     fragment = generate(today)
     print(f"Received {len(fragment)} characters of HTML.")
