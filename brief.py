@@ -469,10 +469,86 @@ Return ONLY an HTML fragment — no markdown, no code fences, no preamble, no
 </section>
 
 If research fails or sources are too thin for the geopolitics section, say so
-honestly in the same format rather than padding it with speculation."""
+honestly in the same format rather than padding it with speculation.
+
+============================================================
+BEFORE YOU SEND — CHECK THIS
+============================================================
+
+Your reply must contain all four divider divs, in this order:
+
+  <div class="divider first"><span>Geopolitics</span></div>
+  <div class="divider"><span>Spanish Practice</span></div>
+  <div class="divider"><span>General Knowledge</span></div>
+  <div class="divider"><span>The Long Game</span></div>
+
+The single most common failure is stopping after General Knowledge. Do not end
+your reply until The Long Game and its practice are written. If you are short
+on room, shorten the geopolitics section — do not omit the last one."""
 
 
 # --------------------------------------------------------------------------
+
+# The sections the email must contain, and the marker that proves each one is
+# present. Geopolitics is not listed: if that is missing there is no brief at
+# all and the run should be looked at by hand.
+EXPECTED_SECTIONS = (
+    ("Spanish Practice", "<span>Spanish Practice</span>"),
+    ("General Knowledge", "<span>General Knowledge</span>"),
+    ("The Long Game", "<span>The Long Game</span>"),
+)
+
+
+def missing_sections(fragment):
+    return [name for name, marker in EXPECTED_SECTIONS if marker not in fragment]
+
+
+def request_missing(today, missing, headers):
+    """Second pass asking only for the sections the first reply left out."""
+    names = ", ".join(missing)
+    prompt = f"""{build_prompt(today)}
+
+============================================================
+CORRECTION — READ THIS LAST, IT OVERRIDES THE OUTPUT FORMAT ABOVE
+============================================================
+
+You already wrote this brief and left out: {names}.
+
+Write ONLY those section(s) now, to exactly the specification and HTML
+structure given above, including the divider div that introduces each one. Do
+not repeat any section you are not asked for here, do not re-write the
+geopolitics section, and do not add any preamble, apology or closing remark.
+Return only the HTML fragment for the missing section(s)."""
+
+    payload = {
+        "model": MODEL,
+        "max_tokens": MAX_TOKENS,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    result = post_json(ANTHROPIC_URL, payload, headers)
+
+    extra = "".join(
+        block.get("text", "")
+        for block in result.get("content", [])
+        if block.get("type") == "text"
+    ).strip()
+
+    if extra.startswith("```"):
+        extra = extra.split("\n", 1)[1] if "\n" in extra else extra
+        extra = extra.rsplit("```", 1)[0].strip()
+
+    # Same defensive trim as the main pass: drop anything before the first
+    # divider and anything after the last closing section tag.
+    start = extra.find('<div class="divider"')
+    if start > 0:
+        extra = extra[start:]
+    end = extra.rfind("</section>")
+    if end != -1:
+        extra = extra[: end + len("</section>")]
+
+    print(f"Second pass returned {len(extra)} characters.", file=sys.stderr)
+    return extra
+
 
 def generate(today):
     payload = {
@@ -526,30 +602,42 @@ def generate(today):
     if end != -1:
         fragment = fragment[: end + len("</section>")]
 
-    # That trim is what makes a truncated reply look deceptively tidy: it cuts
-    # back to the last complete section, so a brief missing its final third
-    # still arrives looking finished. Check the sections we expect are actually
-    # present and say so in the email itself if they are not.
-    missing = [
-        name
-        for name, marker in (
-            ("Spanish Practice", "<span>Spanish Practice</span>"),
-            ("General Knowledge", "<span>General Knowledge</span>"),
-            ("The Long Game", "<span>The Long Game</span>"),
-        )
-        if marker not in fragment
-    ]
+    # That trim is what makes an incomplete reply look deceptively tidy: it
+    # cuts back to the last complete section, so a brief missing its final
+    # third still arrives looking finished.
+    #
+    # In practice the model sometimes just stops after General Knowledge — this
+    # is not a token-ceiling problem (a full brief is nowhere near MAX_TOKENS),
+    # it simply ends its turn early. So rather than only reporting the gap, ask
+    # once more for the sections that are missing and splice them in. The
+    # notice below is the fallback for when even that fails.
+    missing = missing_sections(fragment)
     if missing:
         print(
-            f"WARNING: brief is missing section(s): {', '.join(missing)}",
+            f"Brief is missing section(s): {', '.join(missing)}. "
+            "Requesting them in a second pass.",
+            file=sys.stderr,
+        )
+        try:
+            extra = request_missing(today, missing, headers)
+        except RuntimeError as e:
+            print(f"Second pass failed: {e}", file=sys.stderr)
+            extra = ""
+        if extra:
+            fragment = f"{fragment}\n{extra}"
+        missing = missing_sections(fragment)
+
+    if missing:
+        print(
+            f"WARNING: brief is still missing section(s): {', '.join(missing)}",
             file=sys.stderr,
         )
         fragment += (
             '\n<section><h2>Incomplete Brief</h2><div class="takeaway"><p>'
             "This morning's brief is missing the following section(s): "
-            f"{', '.join(missing)}. The model's reply was cut short before it "
-            "finished writing them. Nothing has been silently dropped from the "
-            "sections above.</p></div></section>"
+            f"{', '.join(missing)}. The model stopped before writing them and "
+            "a second attempt did not recover them. Nothing has been silently "
+            "dropped from the sections above.</p></div></section>"
         )
 
     return fragment
