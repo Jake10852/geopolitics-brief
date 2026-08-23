@@ -23,7 +23,7 @@ Environment variables required:
                       (or onboarding@resend.dev for testing)
 
 Optional:
-  GEMINI_MODEL        defaults to gemini-2.5-pro
+  GEMINI_MODEL        pin one model ID instead of probing MODEL_CANDIDATES
   FORCE_DATE          YYYY-MM-DD, overrides today's date. Useful for
                       previewing what a different day's rotation produces.
   DRY_RUN             set to "1" to write brief-output.html without emailing.
@@ -38,7 +38,24 @@ import json
 
 GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
 RESEND_URL = "https://api.resend.com/emails"
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-pro")
+
+# Google retires model IDs faster than this script gets looked at, and a
+# retired ID is a hard 404 rather than a graceful fallback: gemini-2.5-pro
+# stopped accepting new API keys and took the whole brief down with it. So
+# rather than pin one name, try current models in order and use the first the
+# key can actually reach. Set GEMINI_MODEL to override and skip the probing.
+MODEL_CANDIDATES = [
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.1-pro-preview",
+    "gemini-2.5-flash",
+]
+if os.environ.get("GEMINI_MODEL"):
+    MODEL_CANDIDATES = [os.environ["GEMINI_MODEL"]]
+
+# Set once the first call succeeds, so the follow-up pass doesn't re-probe.
+_working_model = None
 
 # Gemini 2.5 Pro is a thinking model and its reasoning tokens are charged
 # against this same ceiling, so it needs to be far more generous than the
@@ -158,6 +175,21 @@ def rotations(d):
     return region, theme, cats, strand
 
 
+class ApiError(RuntimeError):
+    """An HTTP error from an API, with the status code kept accessible.
+
+    The model probing below needs to tell "this model ID is gone" (404) apart
+    from "the request was bad" or "you are rate limited", which means the
+    status code has to survive being raised.
+    """
+
+    def __init__(self, code, url, body):
+        self.code = code
+        self.url = url
+        self.body = body
+        super().__init__(f"{url} returned {code}: {body}")
+
+
 def post_json(url, payload, headers, timeout=900):
     data = json.dumps(payload).encode("utf-8")
 
@@ -174,7 +206,7 @@ def post_json(url, payload, headers, timeout=900):
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"{url} returned {e.code}: {body}") from None
+        raise ApiError(e.code, url, body) from None
     except urllib.error.URLError as e:
         raise RuntimeError(f"Could not reach {url}: {e.reason}") from None
 
@@ -506,12 +538,13 @@ def call_model(prompt, search=True):
     first pass needs it: the follow-up that fills in a missing section is
     writing from the same instructions, not researching again.
     """
+    global _working_model
+
+    # No temperature / top_p / top_k here on purpose: Gemini 3.x removed the
+    # sampling parameters and rejects requests that still send them.
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "maxOutputTokens": MAX_TOKENS,
-            "temperature": 1,
-        },
+        "generationConfig": {"maxOutputTokens": MAX_TOKENS},
     }
     if search:
         payload["tools"] = [{"google_search": {}}]
@@ -521,8 +554,33 @@ def call_model(prompt, search=True):
         "content-type": "application/json",
     }
 
-    url = f"{GEMINI_API_ROOT}/{MODEL}:generateContent"
-    result = post_json(url, payload, headers)
+    attempts = [_working_model] if _working_model else list(MODEL_CANDIDATES)
+    last_404 = None
+    result = None
+
+    for name in attempts:
+        try:
+            result = post_json(
+                f"{GEMINI_API_ROOT}/{name}:generateContent", payload, headers
+            )
+        except ApiError as e:
+            # 404 means this model ID is retired or not available to this key.
+            # Anything else is a real problem and should surface immediately.
+            if e.code != 404:
+                raise
+            print(f"Model {name} unavailable (404), trying the next.", file=sys.stderr)
+            last_404 = e
+            continue
+        if name != _working_model:
+            print(f"Using model {name}.", file=sys.stderr)
+        _working_model = name
+        break
+
+    if result is None:
+        raise RuntimeError(
+            "No candidate model was reachable with this API key. Tried: "
+            f"{', '.join(attempts)}. Last error: {last_404}"
+        )
 
     candidates = result.get("candidates") or []
     if not candidates:
@@ -713,7 +771,7 @@ def main():
     )
 
     region, theme, cats, strand = rotations(today)
-    print(f"{today} — combined brief using {MODEL}")
+    print(f"{today} — combined brief, model candidates: {', '.join(MODEL_CANDIDATES)}")
     print(f"  region:     {region}")
     print(f"  Spanish:    {theme}")
     print(f"  knowledge:  {'; '.join(cats)}")
