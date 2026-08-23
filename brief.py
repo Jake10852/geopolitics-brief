@@ -36,7 +36,13 @@ import urllib.request
 import urllib.error
 import json
 
-GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
+# The Interactions API, not the older models/:generateContent endpoint. This
+# matters: generateContent accepts a google_search tool for Gemini 3.x models
+# and then silently ignores it. The first run on Gemini produced a confident,
+# well-written geopolitics section about the August 2024 Kursk incursion,
+# presented as that morning's news and cited to 2024 articles, in 28 seconds
+# flat. Grounding is only actually wired up on this endpoint.
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 RESEND_URL = "https://api.resend.com/emails"
 
 # Google retires model IDs faster than this script gets looked at, and a
@@ -542,34 +548,31 @@ def call_model(prompt, search=True):
 
     # No temperature / top_p / top_k here on purpose: Gemini 3.x removed the
     # sampling parameters and rejects requests that still send them.
-    payload = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": MAX_TOKENS},
-    }
-    if search:
-        payload["tools"] = [{"google_search": {}}]
-
     headers = {
         "x-goog-api-key": os.environ["GEMINI_API_KEY"],
         "content-type": "application/json",
     }
 
     attempts = [_working_model] if _working_model else list(MODEL_CANDIDATES)
-    last_404 = None
+    last_missing = None
     result = None
 
     for name in attempts:
+        payload = {"model": name, "input": prompt}
+        if search:
+            payload["tools"] = [{"type": "google_search"}]
         try:
-            result = post_json(
-                f"{GEMINI_API_ROOT}/{name}:generateContent", payload, headers
-            )
+            result = post_json(GEMINI_URL, payload, headers)
         except ApiError as e:
-            # 404 means this model ID is retired or not available to this key.
-            # Anything else is a real problem and should surface immediately.
-            if e.code != 404:
+            # A retired or unavailable model ID comes back as 404, and
+            # sometimes as a 400 naming the model. Anything else is a real
+            # problem and should surface immediately rather than be retried
+            # against a different model.
+            if e.code not in (400, 404) or "model" not in e.body.lower():
                 raise
-            print(f"Model {name} unavailable (404), trying the next.", file=sys.stderr)
-            last_404 = e
+            print(f"Model {name} unavailable ({e.code}), trying the next.",
+                  file=sys.stderr)
+            last_missing = e
             continue
         if name != _working_model:
             print(f"Using model {name}.", file=sys.stderr)
@@ -579,40 +582,44 @@ def call_model(prompt, search=True):
     if result is None:
         raise RuntimeError(
             "No candidate model was reachable with this API key. Tried: "
-            f"{', '.join(attempts)}. Last error: {last_404}"
+            f"{', '.join(str(a) for a in attempts)}. Last error: {last_missing}"
         )
 
-    candidates = result.get("candidates") or []
-    if not candidates:
-        # Usually a safety block or a malformed request; the payload explains.
-        raise RuntimeError(
-            f"Gemini returned no candidates. Response: {json.dumps(result)[:2000]}"
-        )
+    steps = result.get("steps") or []
 
-    candidate = candidates[0]
-
-    # Thinking models return their reasoning as parts flagged thought=true.
-    # Those are not the brief and must not be pasted into the email.
+    # Only model_output steps hold the answer. The thought steps are the
+    # model's reasoning and must never reach the email.
     text = "".join(
-        part.get("text", "")
-        for part in candidate.get("content", {}).get("parts", [])
-        if not part.get("thought")
+        block.get("text", "")
+        for step in steps
+        if step.get("type") == "model_output"
+        for block in step.get("content", [])
+        if block.get("type") == "text"
     ).strip()
 
-    finish = candidate.get("finishReason")
-    if finish and finish not in ("STOP", "MAX_TOKENS"):
-        print(f"WARNING: unusual finishReason {finish}.", file=sys.stderr)
-    if finish == "MAX_TOKENS":
-        print(
-            "WARNING: response hit the output ceiling and may be truncated. "
-            f"Consider raising MAX_TOKENS above {MAX_TOKENS}.",
-            file=sys.stderr,
-        )
+    if search:
+        queries = [
+            q
+            for step in steps
+            if step.get("type") == "google_search_call"
+            for q in step.get("arguments", {}).get("queries", [])
+        ]
+        if queries:
+            print(f"Grounded on {len(queries)} search(es): "
+                  f"{'; '.join(queries[:6])}", file=sys.stderr)
+        else:
+            # This is the failure that produced a two-year-old front page.
+            # Never let it pass quietly again.
+            raise RuntimeError(
+                "Search grounding was requested but the model ran no searches, "
+                "so anything it wrote about current events comes from training "
+                "data rather than today's web. Refusing to send."
+            )
 
     if not text:
         raise RuntimeError(
-            "Gemini returned no usable text (only reasoning, or an empty "
-            f"candidate). finishReason={finish}."
+            "Gemini returned no usable text. Response begins: "
+            f"{json.dumps(result)[:1500]}"
         )
 
     return text
