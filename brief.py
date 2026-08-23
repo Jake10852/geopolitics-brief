@@ -11,15 +11,19 @@ Sections:
 Replaces the earlier geo/Spanish alternation. Runs seven days a week, so the
 rotations below are keyed on the date's ordinal rather than a weekday count.
 
+Runs on the Gemini API's free tier (Google AI Studio). One brief a day is one
+or two requests, comfortably inside the free daily quota, so the whole pipeline
+— Actions, Resend, model — costs nothing.
+
 Environment variables required:
-  ANTHROPIC_API_KEY   from console.anthropic.com
+  GEMINI_API_KEY      free key from aistudio.google.com/apikey
   RESEND_API_KEY      from resend.com
   MAIL_TO             recipient address
   MAIL_FROM           verified sender, e.g. brief@yourdomain.com
                       (or onboarding@resend.dev for testing)
 
 Optional:
-  CLAUDE_MODEL        defaults to claude-sonnet-5
+  GEMINI_MODEL        defaults to gemini-2.5-pro
   FORCE_DATE          YYYY-MM-DD, overrides today's date. Useful for
                       previewing what a different day's rotation produces.
   DRY_RUN             set to "1" to write brief-output.html without emailing.
@@ -32,16 +36,22 @@ import urllib.request
 import urllib.error
 import json
 
-ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
 RESEND_URL = "https://api.resend.com/emails"
-MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-pro")
 
-# Three sections in one response need real headroom. At 8000 the brief was
+# Gemini 2.5 Pro is a thinking model and its reasoning tokens are charged
+# against this same ceiling, so it needs to be far more generous than the
+# equivalent figure was on Claude. Nothing is billed on the free tier; an
+# unused ceiling costs only the risk of a longer wait.
+#
+# Original note, still true of the visible output: three sections in one
+# response need real headroom. At 8000 the brief was
 # silently losing its General Knowledge section: the geopolitics half ran long
 # once bracketed glosses were added, the response hit the ceiling mid-sentence,
 # and the tidy-up below trimmed back to the last complete </section>. Keep this
 # generous — an unused ceiling costs nothing.
-MAX_TOKENS = 16000
+MAX_TOKENS = 32000
 
 # --------------------------------------------------------------------------
 # Rotations
@@ -489,6 +499,67 @@ on room, shorten the geopolitics section — do not omit the last one."""
 
 # --------------------------------------------------------------------------
 
+def call_model(prompt, search=True):
+    """One Gemini generateContent call. Returns the model's text output.
+
+    Grounding with Google Search replaces Claude's web_search tool. Only the
+    first pass needs it: the follow-up that fills in a missing section is
+    writing from the same instructions, not researching again.
+    """
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "maxOutputTokens": MAX_TOKENS,
+            "temperature": 1,
+        },
+    }
+    if search:
+        payload["tools"] = [{"google_search": {}}]
+
+    headers = {
+        "x-goog-api-key": os.environ["GEMINI_API_KEY"],
+        "content-type": "application/json",
+    }
+
+    url = f"{GEMINI_API_ROOT}/{MODEL}:generateContent"
+    result = post_json(url, payload, headers)
+
+    candidates = result.get("candidates") or []
+    if not candidates:
+        # Usually a safety block or a malformed request; the payload explains.
+        raise RuntimeError(
+            f"Gemini returned no candidates. Response: {json.dumps(result)[:2000]}"
+        )
+
+    candidate = candidates[0]
+
+    # Thinking models return their reasoning as parts flagged thought=true.
+    # Those are not the brief and must not be pasted into the email.
+    text = "".join(
+        part.get("text", "")
+        for part in candidate.get("content", {}).get("parts", [])
+        if not part.get("thought")
+    ).strip()
+
+    finish = candidate.get("finishReason")
+    if finish and finish not in ("STOP", "MAX_TOKENS"):
+        print(f"WARNING: unusual finishReason {finish}.", file=sys.stderr)
+    if finish == "MAX_TOKENS":
+        print(
+            "WARNING: response hit the output ceiling and may be truncated. "
+            f"Consider raising MAX_TOKENS above {MAX_TOKENS}.",
+            file=sys.stderr,
+        )
+
+    if not text:
+        raise RuntimeError(
+            "Gemini returned no usable text (only reasoning, or an empty "
+            f"candidate). finishReason={finish}."
+        )
+
+    return text
+
+
 # The sections the email must contain, and the marker that proves each one is
 # present. Geopolitics is not listed: if that is missing there is no brief at
 # all and the run should be looked at by hand.
@@ -503,7 +574,7 @@ def missing_sections(fragment):
     return [name for name, marker in EXPECTED_SECTIONS if marker not in fragment]
 
 
-def request_missing(today, missing, headers):
+def request_missing(today, missing):
     """Second pass asking only for the sections the first reply left out."""
     names = ", ".join(missing)
     prompt = f"""{build_prompt(today)}
@@ -520,18 +591,7 @@ not repeat any section you are not asked for here, do not re-write the
 geopolitics section, and do not add any preamble, apology or closing remark.
 Return only the HTML fragment for the missing section(s)."""
 
-    payload = {
-        "model": MODEL,
-        "max_tokens": MAX_TOKENS,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    result = post_json(ANTHROPIC_URL, payload, headers)
-
-    extra = "".join(
-        block.get("text", "")
-        for block in result.get("content", [])
-        if block.get("type") == "text"
-    ).strip()
+    extra = call_model(prompt, search=False)
 
     if extra.startswith("```"):
         extra = extra.split("\n", 1)[1] if "\n" in extra else extra
@@ -551,40 +611,7 @@ Return only the HTML fragment for the missing section(s)."""
 
 
 def generate(today):
-    payload = {
-        "model": MODEL,
-        "max_tokens": MAX_TOKENS,
-        "messages": [{"role": "user", "content": build_prompt(today)}],
-        "tools": [
-            {"type": "web_search_20250305", "name": "web_search", "max_uses": 12}
-        ],
-    }
-
-    headers = {
-        "x-api-key": os.environ["ANTHROPIC_API_KEY"],
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-
-    result = post_json(ANTHROPIC_URL, payload, headers)
-
-    fragment = "".join(
-        block.get("text", "")
-        for block in result.get("content", [])
-        if block.get("type") == "text"
-    ).strip()
-
-    if not fragment:
-        raise RuntimeError(
-            f"Model returned no text. Response: {json.dumps(result)[:2000]}"
-        )
-
-    if result.get("stop_reason") == "max_tokens":
-        print(
-            "WARNING: response hit the max_tokens ceiling and may be truncated. "
-            f"Consider raising MAX_TOKENS above {MAX_TOKENS}.",
-            file=sys.stderr,
-        )
+    fragment = call_model(build_prompt(today), search=True)
 
     if fragment.startswith("```"):
         fragment = fragment.split("\n", 1)[1] if "\n" in fragment else fragment
@@ -619,7 +646,7 @@ def generate(today):
             file=sys.stderr,
         )
         try:
-            extra = request_missing(today, missing, headers)
+            extra = request_missing(today, missing)
         except RuntimeError as e:
             print(f"Second pass failed: {e}", file=sys.stderr)
             extra = ""
@@ -673,7 +700,7 @@ def send(html, today):
 def main():
     dry_run = os.environ.get("DRY_RUN", "") == "1"
 
-    required = ["ANTHROPIC_API_KEY"]
+    required = ["GEMINI_API_KEY"]
     if not dry_run:
         required += ["RESEND_API_KEY", "MAIL_TO", "MAIL_FROM"]
     missing = [v for v in required if not os.environ.get(v)]
